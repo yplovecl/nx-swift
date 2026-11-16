@@ -1,4 +1,4 @@
-# 玄鸟（product-notify）部署文档
+# 玄鸟（NX Swift）部署文档
 
 本文说明如何把应用部署到自己的 Linux 服务器。本地开发仍使用 SQLite，线上使用 MariaDB。
 

@@ -1,5 +1,5 @@
 {
-  "name": "product-notify",
+  "name": "nx-swift",
   "private": true,
   "scripts": {
     "build": "remix vite:build",
