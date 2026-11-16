@@ -84,7 +84,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         : purchase === "declined"
           ? t("homePurchaseDeclined")
           : purchase === "pending"
-            ? t("homePurchasePending", { credits: purchasedCredits })
+            ? t("homePurchasePending")
             : "",
     purchaseTone: purchase === "applied" ? "success" : purchase === "declined" ? "warning" : "info",
     quota,

@@ -321,7 +321,7 @@ export async function settleMailPurchases(admin: AdminClient, shop: string) {
   let appliedCredits = 0;
   let declined = false;
   let waiting = false;
-  let recentWaitingCredits = 0;
+  let recentWaiting = false;
   for (const purchase of pending) {
     const status = statuses.get(purchase.chargeGid) ?? "";
     if (status === "ACTIVE") {
@@ -337,14 +337,12 @@ export async function settleMailPurchases(admin: AdminClient, shop: string) {
       continue;
     }
     waiting = true;
-    if (Date.now() - purchase.createdAt.getTime() < 15 * 60 * 1000) {
-      recentWaitingCredits += purchase.credits;
-    }
+    if (Date.now() - purchase.createdAt.getTime() < 15 * 60 * 1000) recentWaiting = true;
     console.info("mail purchase status", status || "missing");
   }
 
   if (appliedCredits > 0) return { state: "applied" as const, credits: appliedCredits };
   if (declined && !waiting) return { state: "declined" as const, credits: 0 };
-  if (recentWaitingCredits > 0) return { state: "pending" as const, credits: recentWaitingCredits };
+  if (recentWaiting) return { state: "pending" as const, credits: 0 };
   return { state: "none" as const, credits: 0 };
 }

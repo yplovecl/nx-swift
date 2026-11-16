@@ -31,8 +31,7 @@ const copy = {
     homePackLabel: "{credits} emails · {price}",
     homeBuy: "Buy",
     homePurchaseApplied: "Added {credits} emails.",
-    homePurchasePending:
-      "Quota already added is unchanged. Another order for {credits} emails is not confirmed. If you approved only once, ignore this. If you approved twice, refresh again in a moment.",
+    homePurchasePending: "Shopify is still confirming this charge. Refresh this page in a moment.",
     homePurchaseDeclined: "The purchase was not completed.",
     homePurchaseFailed: "Could not start the purchase.",
     homeNoPacks: "No email packs are available.",
@@ -212,8 +211,7 @@ const copy = {
     homePackLabel: "{credits} 封 · {price}",
     homeBuy: "购买",
     homePurchaseApplied: "已增加 {credits} 封。",
-    homePurchasePending:
-      "已经入账的额度不受影响。另有一笔 {credits} 封尚未确认。只批准过一次可以忽略；批准过两次的话，稍后再刷新。",
+    homePurchasePending: "Shopify 仍在确认这笔费用。请稍后再刷新本页。",
     homePurchaseDeclined: "购买没有完成。",
     homePurchaseFailed: "无法发起购买。",
     homeNoPacks: "当前没有可购买的邮件包。",
