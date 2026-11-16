@@ -119,6 +119,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return { confirmationUrl: started.confirmationUrl };
 };
 
+function buyAction(search: string) {
+  const params = new URLSearchParams(search);
+  params.set("index", "");
+  return `/app?${params.toString()}`;
+}
+
 function openEmbeddedPage(path: string, search: string) {
   return (event?: { preventDefault: () => void }) => {
     event?.preventDefault();
@@ -208,7 +214,7 @@ export default function Index() {
                     onClick={() => {
                       const body = new FormData();
                       body.set("packId", String(pack.id));
-                      fetcher.submit(body, { method: "post", action: `/app${search}` });
+                      fetcher.submit(body, { method: "post", action: buyAction(search) });
                     }}
                   >
                     {data.buyLabel}
