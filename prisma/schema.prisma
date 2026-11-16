@@ -35,10 +35,12 @@ model Session {
 }
 
 model Subscriber {
-  id        Int      @id @default(autoincrement())
-  shop      String // 店铺域名，如 xxx.myshopify.com
-  email     String
-  createdAt DateTime @default(now())
+  id            Int            @id @default(autoincrement())
+  shop          String // 店铺域名，如 xxx.myshopify.com
+  email         String
+  receivedCount Int            @default(0)
+  createdAt     DateTime       @default(now())
+  deliveries    MailDelivery[]
 
   @@unique([shop, email]) // 同一店铺邮箱不重复
 }
@@ -60,6 +62,60 @@ model ShopDomain {
   records   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// 新店铺的初始额度。修改这一行即可，不必改代码。
+model AppSetting {
+  key   String @id
+  value String
+}
+
+// 可购买的邮件包。价格以美分为单位，例如 100 表示 1 美元。
+model MailPack {
+  id         Int            @id @default(autoincrement())
+  credits    Int
+  priceCents Int
+  currency   String         @default("USD")
+  active     Boolean        @default(true)
+  sort       Int            @default(0)
+  purchases  MailPurchase[]
+}
+
+model ShopMailBalance {
+  shop      String   @id
+  allowance Int
+  used      Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model MailPurchase {
+  id         Int      @id @default(autoincrement())
+  shop       String
+  packId     Int
+  pack       MailPack @relation(fields: [packId], references: [id])
+  credits    Int
+  priceCents Int
+  currency   String
+  chargeGid  String   @unique
+  status     String
+  applied    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([shop, createdAt])
+}
+
+// 每一封实际交给邮件服务的信，记一个收件人。
+model MailDelivery {
+  id           Int         @id @default(autoincrement())
+  shop         String
+  subscriberId Int?
+  subscriber   Subscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+  email        String
+  sentAt       DateTime    @default(now())
+
+  @@index([shop, sentAt])
+  @@index([shop, email])
+  @@index([subscriberId])
 }
 
 model CustomerDataRequest {

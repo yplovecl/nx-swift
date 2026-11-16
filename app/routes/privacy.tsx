@@ -15,6 +15,7 @@ const storedKeys = [
   "privacyDataEmail",
   "privacyDataSender",
   "privacyDataRequest",
+  "privacyDataDelivery",
 ] as const satisfies readonly CopyKey[];
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {

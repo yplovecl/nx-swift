@@ -38,6 +38,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     empty: t("subscribersEmpty"),
     colEmail: t("colEmail"),
     colSubscribed: t("colSubscribed"),
+    colReceived: t("colReceived"),
     dataRequestsTitle: t("dataRequestsTitle"),
     dataRequestsHelp: t("dataRequestsHelp"),
     dataRequestsEmpty: t("dataRequestsEmpty"),
@@ -46,6 +47,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       id: subscriber.id,
       email: subscriber.email,
       createdAt: subscriber.createdAt.toISOString(),
+      receivedCount: subscriber.receivedCount,
     })),
     requests: requests.map((item) => ({
       id: item.id,
@@ -75,6 +77,7 @@ export default function SubscribersPage() {
             headings={[
               { title: data.colEmail },
               { title: data.colSubscribed },
+              { title: data.colReceived },
             ]}
             emptyState={
               <Box padding="400">
@@ -94,6 +97,7 @@ export default function SubscribersPage() {
                 <IndexTable.Cell>
                   {formatTime(subscriber.createdAt, data.locale)}
                 </IndexTable.Cell>
+                <IndexTable.Cell>{subscriber.receivedCount}</IndexTable.Cell>
               </IndexTable.Row>
             ))}
           </IndexTable>

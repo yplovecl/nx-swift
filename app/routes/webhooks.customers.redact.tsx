@@ -9,6 +9,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const email = payload.customer?.email?.trim().toLowerCase();
   if (email) {
     await db.$transaction([
+      db.mailDelivery.deleteMany({ where: { shop, email } }),
       db.subscriber.deleteMany({ where: { shop, email } }),
       db.customerDataRequest.deleteMany({ where: { shop, email } }),
     ]);

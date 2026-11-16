@@ -14,6 +14,9 @@ const prisma = global.prismaGlobal ?? new PrismaClient();
 
 export function deleteShopRecords(shop: string) {
   return prisma.$transaction([
+    prisma.mailDelivery.deleteMany({ where: { shop } }),
+    prisma.mailPurchase.deleteMany({ where: { shop } }),
+    prisma.shopMailBalance.deleteMany({ where: { shop } }),
     prisma.subscriber.deleteMany({ where: { shop } }),
     prisma.shopSender.deleteMany({ where: { shop } }),
     prisma.customerDataRequest.deleteMany({ where: { shop } }),

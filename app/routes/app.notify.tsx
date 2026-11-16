@@ -19,6 +19,7 @@ import { NewProductNotification } from "../emails/NewProductNotification";
 import db from "../db.server";
 import { shopFromAddress } from "../domain.server";
 import { localeFromRequest, translate } from "../i18n";
+import { recordDeliveries, releaseMails, reserveMails, shopQuota } from "../quota.server";
 import { getResend } from "../resend.server";
 import { authenticate } from "../shopify.server";
 import { unsubscribeUrl } from "../unsubscribe.server";
@@ -236,10 +237,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const locale = await localeFromRequest(request);
   const t = translate(locale);
   const search = productQuery(new URL(request.url).searchParams.get("q"));
-  const [subscriberCount, domain, address] = await Promise.all([
+  const [subscriberCount, domain, address, quota] = await Promise.all([
     db.subscriber.count({ where: { shop: session.shop } }),
     db.shopDomain.findUnique({ where: { shop: session.shop } }),
     shopFromAddress(session.shop),
+    shopQuota(session.shop),
   ]);
 
   const response = await admin.graphql(
@@ -283,7 +285,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         ? t("notifyDomainPending", { domain: domain.name })
         : !address
           ? t("notifyNoSender", { domain: domain.name })
-          : "";
+          : quota.remaining <= 0
+            ? t("notifyNoQuota")
+            : "";
 
   return {
     locale,
@@ -292,6 +296,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     subtitle: t("notifySubtitle", { count: subscriberCount }),
     products: payload.data?.products?.nodes ?? [],
     subscriberCount,
+    quotaLine: t("notifyRemaining", { remaining: quota.remaining, total: quota.total }),
     apiKeyConfigured,
     canSend: blockMessage === "",
     fromLabel: address?.from ?? "",
@@ -456,6 +461,22 @@ export const action = async ({
         };
   }
 
+  const reserved = await reserveMails(session.shop, subscribers.length);
+  if (reserved <= 0) {
+    return {
+      ok: afterId > 0,
+      sent: 0,
+      failed: 0,
+      done: true,
+      afterId,
+      nextAfterId: afterId,
+      runId,
+      message: t("notifyNoQuota"),
+    };
+  }
+  const batch = subscribers.slice(0, reserved);
+  const limited = reserved < subscribers.length;
+
   const shopName = payload.data?.shop?.name || session.shop;
   const subject =
     mailProducts.length === 1
@@ -474,7 +495,7 @@ export const action = async ({
 
   try {
     const emails = await Promise.all(
-      subscribers.map(async (subscriber) => ({
+      batch.map(async (subscriber) => ({
         from,
         to: subscriber.email,
         subject,
@@ -494,35 +515,57 @@ export const action = async ({
       idempotencyKey: `${session.shop}:${runId}:${afterId}`,
     });
     if (error || !data) {
-      failed = subscribers.length;
+      await releaseMails(session.shop, reserved);
+      failed = batch.length;
       message = errorText(error) || t("notifySendFailed");
       console.error("Resend batch send failed", error);
     } else {
-      const queued = Array.isArray(data.data) ? data.data.length : 0;
       const errors = Array.isArray(data.errors) ? data.errors : [];
-      sent = queued;
-      failed = errors.length;
+      const failedIndexes = new Set<number>();
+      for (const item of errors) {
+        if (item && typeof item.index === "number") failedIndexes.add(item.index);
+      }
+      const accepted =
+        errors.length > 0 && failedIndexes.size === 0
+          ? []
+          : batch.filter((_, index) => !failedIndexes.has(index));
+      sent = accepted.length;
+      failed = batch.length - sent;
+      await releaseMails(session.shop, reserved - sent);
+      try {
+        await recordDeliveries(session.shop, accepted);
+      } catch (recordError) {
+        console.error(
+          "mail delivery record failed",
+          recordError instanceof Error ? recordError.name : "unknown",
+        );
+      }
+      const parts: string[] = [];
       if (failed > 0) {
-        message =
+        parts.push(
           errors
             .map((item) => item.message)
             .filter((item) => item.length > 0)
-            .join("; ") || t("notifySendFailed");
+            .join("; ") || t("notifySendFailed"),
+        );
         console.error("Resend rejected batch emails", errors);
       }
+      if (limited) parts.push(t("notifyQuotaShort"));
+      message = parts.join(" ");
     }
   } catch (error) {
-    failed = subscribers.length;
+    await releaseMails(session.shop, reserved);
+    failed = batch.length;
     message = errorText(error) || t("notifySendFailed");
     console.error("Resend batch send failed", error);
   }
 
-  const nextAfterId = subscribers[subscribers.length - 1]!.id;
+  const nextAfterId = batch[batch.length - 1]!.id;
   return {
     ok: failed === 0,
     sent,
     failed,
-    done: subscribers.length < BATCH_SIZE,
+    done: limited || subscribers.length < BATCH_SIZE,
     afterId,
     nextAfterId,
     runId,
@@ -716,6 +759,9 @@ export default function NotifyPage() {
             <p>{t("notifyFrom", { from: data.fromLabel })}</p>
           </Banner>
         )}
+        <Banner tone="info">
+          <p>{data.quotaLine}</p>
+        </Banner>
         {data.error && (
           <Banner tone="critical">
             <p>{data.error}</p>

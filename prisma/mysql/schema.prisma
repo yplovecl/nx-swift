@@ -31,10 +31,12 @@ model Session {
 }
 
 model Subscriber {
-  id        Int      @id @default(autoincrement())
-  shop      String
-  email     String   @db.VarChar(254)
-  createdAt DateTime @default(now())
+  id            Int            @id @default(autoincrement())
+  shop          String
+  email         String         @db.VarChar(254)
+  receivedCount Int            @default(0)
+  createdAt     DateTime       @default(now())
+  deliveries    MailDelivery[]
 
   @@unique([shop, email])
 }
@@ -56,6 +58,57 @@ model ShopDomain {
   records   String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AppSetting {
+  key   String @id @db.VarChar(64)
+  value String @db.VarChar(32)
+}
+
+model MailPack {
+  id         Int            @id @default(autoincrement())
+  credits    Int
+  priceCents Int
+  currency   String         @default("USD") @db.VarChar(3)
+  active     Boolean        @default(true)
+  sort       Int            @default(0)
+  purchases  MailPurchase[]
+}
+
+model ShopMailBalance {
+  shop      String   @id @db.VarChar(191)
+  allowance Int
+  used      Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model MailPurchase {
+  id         Int      @id @default(autoincrement())
+  shop       String   @db.VarChar(191)
+  packId     Int
+  pack       MailPack @relation(fields: [packId], references: [id])
+  credits    Int
+  priceCents Int
+  currency   String   @db.VarChar(3)
+  chargeGid  String   @unique @db.VarChar(128)
+  status     String   @db.VarChar(32)
+  applied    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([shop, createdAt])
+}
+
+model MailDelivery {
+  id           Int         @id @default(autoincrement())
+  shop         String      @db.VarChar(191)
+  subscriberId Int?
+  subscriber   Subscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+  email        String      @db.VarChar(254)
+  sentAt       DateTime    @default(now())
+
+  @@index([shop, sentAt])
+  @@index([shop, email])
+  @@index([subscriberId])
 }
 
 model CustomerDataRequest {
