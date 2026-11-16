@@ -130,13 +130,6 @@ export async function recordDeliveries(
   ]);
 }
 
-function chargeGid(chargeId: string) {
-  const id = chargeId.trim();
-  if (id.startsWith("gid://")) return id;
-  if (!/^\d+$/.test(id)) return "";
-  return `gid://shopify/AppPurchaseOneTime/${id}`;
-}
-
 export async function startMailPurchase(
   admin: AdminClient,
   shop: string,
@@ -231,51 +224,125 @@ export async function startMailPurchase(
   return { ok: true as const, confirmationUrl: created.confirmationUrl };
 }
 
-export async function applyMailCharge(admin: AdminClient, shop: string, chargeId: string) {
-  const gid = chargeGid(chargeId);
-  if (!gid) return { state: "missing" as const, credits: 0 };
-  await shopQuota(shop);
-  const purchase = await db.mailPurchase.findUnique({ where: { chargeGid: gid } });
-  if (!purchase || purchase.shop !== shop) return { state: "missing" as const, credits: 0 };
-  if (purchase.applied) return { state: "applied" as const, credits: purchase.credits };
+async function creditPurchase(
+  shop: string,
+  purchase: { id: number; credits: number },
+) {
+  return db.$transaction(async (tx) => {
+    const marked = await tx.mailPurchase.updateMany({
+      where: { id: purchase.id, applied: false },
+      data: { applied: true, status: "active" },
+    });
+    if (marked.count !== 1) return false;
+    await tx.shopMailBalance.update({
+      where: { shop },
+      data: { allowance: { increment: purchase.credits } },
+    });
+    return true;
+  });
+}
 
-  const response = await admin.graphql(
-    `#graphql
-      query MailPurchaseStatus($id: ID!) {
-        node(id: $id) {
-          ... on AppPurchaseOneTime {
-            id
-            status
-          }
-        }
-      }`,
-    { variables: { id: gid } },
+const PURCHASE_STATUS_QUERY = `#graphql
+  query MailPurchaseStatuses($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on AppPurchaseOneTime {
+        id
+        status
+      }
+    }
+  }`;
+
+function readStatuses(payload: {
+  data?: { nodes?: Array<{ id?: string; status?: string } | null> };
+  errors?: { message: string }[];
+}) {
+  if (payload.errors?.length) {
+    console.error("mail purchase status", payload.errors[0]?.message || "error");
+  }
+  const statuses = new Map<string, string>();
+  for (const node of payload.data?.nodes ?? []) {
+    if (node?.id && node.status) statuses.set(node.id, node.status.toUpperCase());
+  }
+  return statuses;
+}
+
+async function purchaseStatuses(admin: AdminClient, shop: string, ids: string[]) {
+  const response = await admin.graphql(PURCHASE_STATUS_QUERY, { variables: { ids } });
+  const statuses = readStatuses(
+    (await response.json()) as {
+      data?: { nodes?: Array<{ id?: string; status?: string } | null> };
+      errors?: { message: string }[];
+    },
   );
-  const payload = (await response.json()) as {
-    data?: { node?: { id?: string; status?: string } | null };
-  };
-  const status = payload.data?.node?.status ?? "";
-  if (status !== "ACTIVE") {
+  if (statuses.size > 0) return statuses;
+
+  const offline = await db.session.findUnique({ where: { id: `offline_${shop}` } });
+  if (!offline?.accessToken) return statuses;
+  const fallback = await fetch(`https://${shop}/admin/api/2026-07/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": offline.accessToken,
+    },
+    body: JSON.stringify({ query: PURCHASE_STATUS_QUERY, variables: { ids } }),
+  });
+  if (!fallback.ok) return statuses;
+  return readStatuses(
+    (await fallback.json()) as {
+      data?: { nodes?: Array<{ id?: string; status?: string } | null> };
+      errors?: { message: string }[];
+    },
+  );
+}
+
+// The return from Shopify's charge page often drops charge_id. Settle any
+// recent unapplied purchase by asking Shopify for its current status.
+export async function settleMailPurchases(admin: AdminClient, shop: string) {
+  await shopQuota(shop);
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const pending = await db.mailPurchase.findMany({
+    where: {
+      shop,
+      applied: false,
+      createdAt: { gte: since },
+      NOT: { status: { in: ["declined", "expired"] } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+  if (pending.length === 0) return { state: "none" as const, credits: 0 };
+
+  const statuses = await purchaseStatuses(
+    admin,
+    shop,
+    pending.map((purchase) => purchase.chargeGid),
+  );
+
+  let appliedCredits = 0;
+  let declined = false;
+  let waiting = false;
+  let recentWaiting = false;
+  for (const purchase of pending) {
+    const status = statuses.get(purchase.chargeGid) ?? "";
+    if (status === "ACTIVE") {
+      if (await creditPurchase(shop, purchase)) appliedCredits += purchase.credits;
+      continue;
+    }
     if (status === "DECLINED" || status === "EXPIRED") {
       await db.mailPurchase.update({
         where: { id: purchase.id },
         data: { status: status.toLowerCase() },
       });
-      return { state: "declined" as const, credits: purchase.credits };
+      declined = true;
+      continue;
     }
-    return { state: "pending" as const, credits: purchase.credits };
+    waiting = true;
+    if (Date.now() - purchase.createdAt.getTime() < 15 * 60 * 1000) recentWaiting = true;
+    console.info("mail purchase status", status || "missing");
   }
 
-  await db.$transaction(async (tx) => {
-    const marked = await tx.mailPurchase.updateMany({
-      where: { id: purchase.id, applied: false },
-      data: { applied: true, status: "active" },
-    });
-    if (marked.count !== 1) return;
-    await tx.shopMailBalance.update({
-      where: { shop },
-      data: { allowance: { increment: purchase.credits } },
-    });
-  });
-  return { state: "applied" as const, credits: purchase.credits };
+  if (appliedCredits > 0) return { state: "applied" as const, credits: appliedCredits };
+  if (declined && !waiting) return { state: "declined" as const, credits: 0 };
+  if (recentWaiting) return { state: "pending" as const, credits: 0 };
+  return { state: "none" as const, credits: 0 };
 }

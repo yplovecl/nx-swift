@@ -17,9 +17,9 @@ import db from "../db.server";
 import { shopFromAddress } from "../domain.server";
 import { localeFromRequest, translate } from "../i18n";
 import {
-  applyMailCharge,
   formatPackPrice,
   listMailPacks,
+  settleMailPurchases,
   shopQuota,
   startMailPurchase,
 } from "../quota.server";
@@ -39,19 +39,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const locale = await localeFromRequest(request);
   const t = translate(locale);
-  const url = new URL(request.url);
-  const chargeId = url.searchParams.get("charge_id");
-  let purchase: "applied" | "declined" | null = null;
-  let purchasedCredits = 0;
-  if (chargeId) {
-    const result = await applyMailCharge(admin, session.shop, chargeId);
-    if (result.state === "applied") {
-      purchase = "applied";
-      purchasedCredits = result.credits;
-    } else if (result.state === "declined") {
-      purchase = "declined";
-    }
-  }
+  const settled = await settleMailPurchases(admin, session.shop);
+  const purchase =
+    settled.state === "applied" || settled.state === "declined" || settled.state === "pending"
+      ? settled.state
+      : null;
+  const purchasedCredits = settled.credits;
 
   const [count, domain, address, quota, packs] = await Promise.all([
     db.subscriber.count({ where: { shop: session.shop } }),
@@ -90,7 +83,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         ? t("homePurchaseApplied", { credits: purchasedCredits })
         : purchase === "declined"
           ? t("homePurchaseDeclined")
-          : "",
+          : purchase === "pending"
+            ? t("homePurchasePending")
+            : "",
     purchaseTone: purchase === "applied" ? "success" : purchase === "declined" ? "warning" : "info",
     quota,
     subscriberCount: count,
@@ -174,7 +169,15 @@ export default function Index() {
       <TitleBar title={data.title} />
       <BlockStack gap="400">
         {data.purchaseMessage ? (
-          <Banner tone={data.purchaseTone === "success" ? "success" : "warning"}>
+          <Banner
+            tone={
+              data.purchaseTone === "success"
+                ? "success"
+                : data.purchaseTone === "info"
+                  ? "info"
+                  : "warning"
+            }
+          >
             <p>{data.purchaseMessage}</p>
           </Banner>
         ) : null}
