@@ -17,7 +17,7 @@ import {
 import { TitleBar } from "@shopify/app-bridge-react";
 import { NewProductNotification } from "../emails/NewProductNotification";
 import db from "../db.server";
-import { shopFromAddress } from "../domain.server";
+import { notificationSender } from "../domain.server";
 import { localeFromRequest, translate } from "../i18n";
 import { recordDeliveries, releaseMails, reserveMails, shopQuota } from "../quota.server";
 import { getResend } from "../resend.server";
@@ -253,10 +253,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const locale = await localeFromRequest(request);
   const t = translate(locale);
   const search = productQuery(new URL(request.url).searchParams.get("q"));
-  const [subscriberCount, domain, address, quota] = await Promise.all([
+  const [subscriberCount, sender, quota] = await Promise.all([
     db.subscriber.count({ where: { shop: session.shop } }),
-    db.shopDomain.findUnique({ where: { shop: session.shop } }),
-    shopFromAddress(session.shop),
+    notificationSender(session.shop),
     shopQuota(session.shop),
   ]);
 
@@ -295,15 +294,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const apiKeyConfigured = Boolean(process.env.RESEND_API_KEY);
   const blockMessage = !apiKeyConfigured
     ? t("notifyNoKey")
-    : !domain
-      ? t("notifyNoDomain")
-      : domain.status !== "verified"
-        ? t("notifyDomainPending", { domain: domain.name })
-        : !address
-          ? t("notifyNoSender", { domain: domain.name })
-          : quota.remaining <= 0
-            ? t("notifyNoQuota")
-            : "";
+    : sender.from === null
+      ? t(sender.domain.status === "verified" ? "notifyNoSender" : "notifyDomainPending", {
+          domain: sender.domain.name,
+        })
+      : quota.remaining <= 0
+        ? t("notifyNoQuota")
+        : "";
 
   return {
     locale,
@@ -315,7 +312,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     quotaLine: t("notifyRemaining", { remaining: quota.remaining, total: quota.total }),
     apiKeyConfigured,
     canSend: response !== null && blockMessage === "",
-    fromLabel: address?.from ?? "",
+    fromLabel: sender.from ?? "",
     blockMessage,
     error: response
       ? payload?.errors?.map((item) => item.message).join("; ") ?? null
@@ -356,14 +353,12 @@ export const action = async ({
   const resend = getResend();
   if (!resend) return rejected(t("notifyNoKey"), runId);
 
-  const domain = await db.shopDomain.findUnique({ where: { shop: session.shop } });
-  if (!domain) return rejected(t("notifyNoDomain"), runId);
-  if (domain.status !== "verified") {
-    return rejected(t("notifyDomainPending", { domain: domain.name }), runId);
+  const sender = await notificationSender(session.shop);
+  if (sender.from === null) {
+    const key = sender.domain.status === "verified" ? "notifyNoSender" : "notifyDomainPending";
+    return rejected(t(key, { domain: sender.domain.name }), runId);
   }
-  const address = await shopFromAddress(session.shop);
-  if (!address) return rejected(t("notifyNoSender", { domain: domain.name }), runId);
-  const from = address.from;
+  const from = sender.from;
 
   const ids = [
     ...new Set(

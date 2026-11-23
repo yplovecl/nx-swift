@@ -1,5 +1,11 @@
 import type { DomainRecords, DomainRegion } from "resend";
-import { DOMAIN_REGIONS, type ShopDomainView, type StoredRecord } from "./domain";
+import {
+  DEFAULT_FROM_EMAIL,
+  DEFAULT_SENDING_DOMAIN,
+  DOMAIN_REGIONS,
+  type ShopDomainView,
+  type StoredRecord,
+} from "./domain";
 import db from "./db.server";
 import { emailOnDomain, formatFromAddress, normalizeEmail } from "./email";
 import { getResend } from "./resend.server";
@@ -124,6 +130,7 @@ export async function addShopDomain(
 ): Promise<{ ok: true; domain: ShopDomainView } | DomainFailure> {
   const name = normalizeDomain(rawName);
   if (!name) return { ok: false, error: "invalid" };
+  if (name === DEFAULT_SENDING_DOMAIN) return { ok: false, error: "taken" };
 
   const resend = getResend();
   if (!resend) return { ok: false, error: "noKey" };
@@ -192,12 +199,15 @@ export async function deleteShopDomain(
   const row = await db.shopDomain.findUnique({ where: { shop } });
   if (!row) return { ok: false, error: "missing" };
 
-  const resend = getResend();
-  if (!resend) return { ok: false, error: "noKey" };
+  // A shop may still have a binding from before this domain became shared.
+  if (row.name !== DEFAULT_SENDING_DOMAIN) {
+    const resend = getResend();
+    if (!resend) return { ok: false, error: "noKey" };
 
-  const removed = await resend.domains.remove(row.resendId);
-  if (removed.error && removed.error.name !== "not_found") {
-    return { ok: false, error: "resend", detail: resendDetail(removed.error.message) };
+    const removed = await resend.domains.remove(row.resendId);
+    if (removed.error && removed.error.name !== "not_found") {
+      return { ok: false, error: "resend", detail: resendDetail(removed.error.message) };
+    }
   }
 
   await db.$transaction([
@@ -207,25 +217,43 @@ export async function deleteShopDomain(
   return { ok: true };
 }
 
-/** From address for this shop, only after its domain is verified and the mailbox matches. */
-export async function shopFromAddress(shop: string) {
+async function loadShopSender(shop: string) {
   const [domain, sender] = await Promise.all([
     db.shopDomain.findUnique({ where: { shop } }),
     db.shopSender.findUnique({ where: { shop } }),
   ]);
-  if (!domain || domain.status !== "verified" || !sender) return null;
-  const email = normalizeEmail(sender.fromEmail);
-  if (!email || !emailOnDomain(email, domain.name)) return null;
-  return {
-    domain: domain.name,
+  const email = normalizeEmail(sender?.fromEmail);
+  if (
+    !domain ||
+    domain.status !== "verified" ||
+    !sender ||
+    !email ||
+    !emailOnDomain(email, domain.name)
+  ) {
+    return { domain, address: null };
+  }
+  const address = {
     email,
     from: formatFromAddress(sender.fromName, email),
   };
+  return { domain, address };
+}
+
+/** The merchant's own address, which can also receive customer data requests. */
+export async function shopFromAddress(shop: string) {
+  const { address } = await loadShopSender(shop);
+  return address;
+}
+
+export async function notificationSender(shop: string) {
+  const { domain, address } = await loadShopSender(shop);
+  if (!domain) return { domain: null, from: DEFAULT_FROM_EMAIL };
+  return { domain, from: address?.from ?? null };
 }
 
 export async function removeShopDomainRemote(shop: string) {
   const row = await db.shopDomain.findUnique({ where: { shop } });
-  if (!row) return;
+  if (!row || row.name === DEFAULT_SENDING_DOMAIN) return;
   const resend = getResend();
   if (!resend) return;
   const removed = await resend.domains.remove(row.resendId);

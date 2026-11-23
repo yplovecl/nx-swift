@@ -15,7 +15,12 @@ import {
   TextField,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { DOMAIN_REGIONS, type ShopDomainView, type StoredRecord } from "../domain";
+import {
+  DEFAULT_FROM_EMAIL,
+  DOMAIN_REGIONS,
+  type ShopDomainView,
+  type StoredRecord,
+} from "../domain";
 import {
   addShopDomain,
   deleteShopDomain,
@@ -396,7 +401,9 @@ export default function SettingsPage() {
               </fetcher.Form>
             ) : (
               <Text as="p" variant="bodyMd">
-                {t("settingsSenderLocked")}
+                {domain
+                  ? t("settingsSenderLocked")
+                  : t("settingsDefaultSender", { from: DEFAULT_FROM_EMAIL })}
               </Text>
             )}
           </BlockStack>

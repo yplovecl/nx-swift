@@ -1,3 +1,6 @@
+export const DEFAULT_SENDING_DOMAIN = "nxlab.app";
+export const DEFAULT_FROM_EMAIL = `noreply@${DEFAULT_SENDING_DOMAIN}`;
+
 export const DOMAIN_REGIONS = [
   "us-east-1",
   "eu-west-1",

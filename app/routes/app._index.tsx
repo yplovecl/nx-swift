@@ -14,7 +14,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import db from "../db.server";
-import { shopFromAddress } from "../domain.server";
+import { notificationSender } from "../domain.server";
 import { localeFromRequest, translate } from "../i18n";
 import {
   formatPackPrice,
@@ -46,10 +46,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       : null;
   const purchasedCredits = settled.credits;
 
-  const [count, domain, address, quota, packs] = await Promise.all([
+  const [count, sender, quota, packs] = await Promise.all([
     db.subscriber.count({ where: { shop: session.shop } }),
-    db.shopDomain.findUnique({ where: { shop: session.shop } }),
-    shopFromAddress(session.shop),
+    notificationSender(session.shop),
     shopQuota(session.shop),
     listMailPacks(),
   ]);
@@ -59,11 +58,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     title: t("homeTitle"),
     shop: session.shop,
     summary: t("homeCount", { count }),
-    senderLine: address
-      ? t("homeSender", { from: address.from })
-      : domain
-        ? t("homeSenderNoFrom", { domain: domain.name })
-        : t("homeNoSender"),
+    senderLine: sender.from === null
+      ? t("homeSenderNoFrom", { domain: sender.domain.name })
+      : t("homeSender", { from: sender.from }),
     steps: [t("homeStepBlock"), t("homeStepSender"), t("homeStepNotify")],
     settingsLabel: t("homeSettings"),
     subscribersLabel: t("homeSubscribers"),

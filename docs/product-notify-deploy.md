@@ -21,7 +21,7 @@
 - `prisma/mysql/migrations/`
 - `package.json` 中的 `setup:production` 脚本
 
-本地的 `prisma/dev.sqlite` 不会迁移到 MariaDB。上线后订阅者和发件设置都是空的，需要在店铺后台重新保存发件人。
+本地的 `prisma/dev.sqlite` 不会迁移到 MariaDB。上线后店铺使用默认发件地址，原有自定义域名和发件人需在店铺后台重新配置。
 
 ## 2. 服务器要求
 
@@ -103,10 +103,9 @@ RESEND_API_KEY=Resend 控制台创建的 API Key
 | `SHOPIFY_APP_URL` | 是 | 公网 HTTPS 根地址，不要末尾斜杠。必须与 `application_url` 完全一致 |
 | `DATABASE_URL` | 是 | 仅线上使用。本地 `pnpm dev` 不读这个变量 |
 | `RESEND_API_KEY` | 发信时必填 | 未设置时后台可以打开，但「发送通知」会被拒绝 |
-| `RESEND_FROM_EMAIL` | 发信时必填 | 所有店铺共用的发信地址，必须属于 Resend 里已验证的域名。商家后台填写的邮箱只作为回复地址 |
 | `SHOP_CUSTOM_DOMAIN` | 否 | 只有店铺使用自定义 myshopify 以外的域名参与 OAuth 时才需要 |
 
-商家在后台「发件设置」保存的是显示名称和回复邮箱，可以是任意邮箱。真正的发信地址是 `RESEND_FROM_EMAIL`。
+请先在 `RESEND_API_KEY` 所属的 Resend 账号中验证 `nxlab.app` 的发件能力。店铺未绑定域名时，通知从 `noreply@nxlab.app` 发出。绑定域名后，店铺需验证该域名并保存该域名下的发件邮箱。
 
 ## 6. 建表、构建、启动
 
@@ -257,7 +256,7 @@ pnpm run deploy
 ## 9. 店铺里要做的事
 
 1. 在 Shopify 后台重新打开应用，按新域名完成授权。权限或地址变化后，旧会话不能继续使用。
-2. 打开「发件设置」，保存发件名称和发件邮箱。邮箱必须是 Resend 账号中已验证域名下的地址。`send`、`rsend` 这类子域名用于退信，不能当作发件地址。
+2. 如需自定义发件地址，在「发件设置」添加并验证域名，然后保存该域名下的发件邮箱。
 3. 在主题编辑器添加「玄鸟」区块。区块里的订阅接口路径保持默认 `/apps/subscribe`，与 App Proxy 的 prefix、subpath 一致。
 4. 到合作伙伴后台确认该应用版本已经发布。本应用在代码里是 App Store 分发（`AppDistribution.AppStore`）。开发店铺可以安装已发布版本；要给任意商家安装，还需要在合作伙伴后台提交 App Store 审核。顾客数据请求会记在「订阅者」页面，并在已保存发件邮箱时把摘要发到该邮箱。隐私政策地址是 `https://swift.nxlab.app/privacy`。
 
@@ -271,7 +270,7 @@ pnpm run deploy
 | 发件设置保存后刷新 | 首页显示刚才保存的发件人 |
 | 主题区块提交一个邮箱 | 订阅者列表出现该邮箱；重复提交得到「该邮箱已订阅」 |
 | 直接请求 `https://swift.nxlab.app/api/subscribe` 且不带 Shopify 签名 | 返回 401 |
-| 选择一个在售商品发送通知 | 订阅者收到邮件，发件地址是 `RESEND_FROM_EMAIL`，回复地址是该店保存的邮箱。未配置密钥、发信地址或回复邮箱时，页面会拒绝发送 |
+| 选择一个在售商品发送通知 | 未绑定域名时使用 `noreply@nxlab.app`，绑定后使用店铺已验证的发件地址 |
 | MariaDB | 存在 `Session`、`Subscriber`、`ShopSender` |
 
 发送很多订阅者时，请求会按每人约 600ms 持续占用，反向代理的读超时要覆盖整次发送。页面要保持打开，当前没有后台队列。
@@ -305,6 +304,6 @@ sudo systemctl restart product-notify
 
 **数据库报 Session 表不存在，或客户端驱动不匹配。** 线上执行的是 `pnpm run setup`。改为 `pnpm run setup:production` 后重启。
 
-**能打开后台，但不能发信。** 先看页面提示：缺少 `RESEND_API_KEY`、缺少 `RESEND_FROM_EMAIL`，或该店还没有回复邮箱。`RESEND_FROM_EMAIL` 的域名要在 Resend 中验证通过。
+**能打开后台，但不能发信。** 先确认 `RESEND_API_KEY` 有效。使用默认发件地址时，确认 `nxlab.app` 在 Resend 中已通过发件验证。使用自定义域名时，确认店铺已验证域名并保存发件地址。
 
 **`prisma migrate deploy` 报找不到 OpenSSL。** 在系统上安装 OpenSSL 后重新执行 `pnpm run setup:production`。
