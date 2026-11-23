@@ -103,6 +103,22 @@ type NotifyResult = {
   message: string;
 };
 
+function handleProductAccessError(error: unknown) {
+  if (error instanceof Response && error.status === 403) return null;
+
+  if (error instanceof Error && "body" in error) {
+    const body = error.body as {
+      errors?: { graphQLErrors?: { extensions?: { code?: string } }[] };
+    } | null;
+    const errors = body?.errors?.graphQLErrors;
+    if (Array.isArray(errors) && errors.some((item) => item.extensions?.code === "ACCESS_DENIED")) {
+      return null;
+    }
+  }
+
+  throw error;
+}
+
 function errorText(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
   if (
@@ -274,8 +290,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         reverse: search.reverse,
       },
     },
-  );
-  const payload = (await response.json()) as ProductsQuery;
+  ).catch(handleProductAccessError);
+  const payload = response ? ((await response.json()) as ProductsQuery) : null;
   const apiKeyConfigured = Boolean(process.env.RESEND_API_KEY);
   const blockMessage = !apiKeyConfigured
     ? t("notifyNoKey")
@@ -294,14 +310,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     query: search.term,
     title: t("notifyTitle"),
     subtitle: t("notifySubtitle", { count: subscriberCount }),
-    products: payload.data?.products?.nodes ?? [],
+    products: payload?.data?.products?.nodes ?? [],
     subscriberCount,
     quotaLine: t("notifyRemaining", { remaining: quota.remaining, total: quota.total }),
     apiKeyConfigured,
-    canSend: blockMessage === "",
+    canSend: response !== null && blockMessage === "",
     fromLabel: address?.from ?? "",
     blockMessage,
-    error: payload.errors?.map((item) => item.message).join("; ") ?? null,
+    error: response
+      ? payload?.errors?.map((item) => item.message).join("; ") ?? null
+      : t("notifyProductAccessDenied"),
     searchLabel: t("notifySearch"),
     searchButton: t("notifySearchButton"),
     pickLabel: t("notifyPick"),
@@ -390,7 +408,8 @@ export const action = async ({
         }
       }`,
     { variables: { ids } },
-  );
+  ).catch(handleProductAccessError);
+  if (!response) return rejected(t("notifyProductAccessDenied"), runId);
   const payload = (await response.json()) as NotifyNodesQuery;
 
   if (payload.errors?.length) {
