@@ -245,10 +245,14 @@ export async function shopFromAddress(shop: string) {
   return address;
 }
 
-export async function notificationSender(shop: string) {
+export async function notificationSender(shop: string): Promise<
+  | { from: string }
+  | { from: null; domain: Pick<ShopDomainView, "name" | "status"> }
+> {
   const { domain, address } = await loadShopSender(shop);
-  if (!domain) return { domain: null, from: DEFAULT_FROM_EMAIL };
-  return { domain, from: address?.from ?? null };
+  if (!domain) return { from: DEFAULT_FROM_EMAIL };
+  if (address) return { from: address.from };
+  return { from: null, domain };
 }
 
 export async function removeShopDomainRemote(shop: string) {

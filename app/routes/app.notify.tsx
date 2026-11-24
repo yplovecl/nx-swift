@@ -38,6 +38,8 @@ type VariantNode = {
   image: { url: string } | null;
 };
 
+const EMPTY_VARIANTS: readonly VariantNode[] = [];
+
 type ProductNode = {
   id: string;
   title: string;
@@ -103,8 +105,20 @@ type NotifyResult = {
   message: string;
 };
 
-function handleProductAccessError(error: unknown) {
-  if (error instanceof Response && error.status === 403) return null;
+function handleProductAccessError(
+  error: unknown,
+  session: { shop: string; scope?: string; isOnline: boolean; expires?: Date },
+) {
+  const context = {
+    shop: session.shop,
+    cachedReadProducts: session.scope?.split(",").includes("read_products") ?? null,
+    onlineSession: session.isOnline,
+    sessionHasExpiry: Boolean(session.expires),
+  };
+  if (error instanceof Response && error.status === 403) {
+    console.warn("Shopify product query denied", { ...context, status: 403 });
+    return "notifyProductForbidden" as const;
+  }
 
   if (error instanceof Error && "body" in error) {
     const body = error.body as {
@@ -112,7 +126,8 @@ function handleProductAccessError(error: unknown) {
     } | null;
     const errors = body?.errors?.graphQLErrors;
     if (Array.isArray(errors) && errors.some((item) => item.extensions?.code === "ACCESS_DENIED")) {
-      return null;
+      console.warn("Shopify product query denied", { ...context, code: "ACCESS_DENIED" });
+      return "notifyProductAccessDenied" as const;
     }
   }
 
@@ -289,8 +304,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         reverse: search.reverse,
       },
     },
-  ).catch(handleProductAccessError);
-  const payload = response ? ((await response.json()) as ProductsQuery) : null;
+  ).catch((error: unknown) => handleProductAccessError(error, session));
+  const payload = typeof response === "string" ? null : (await response.json()) as ProductsQuery;
   const apiKeyConfigured = Boolean(process.env.RESEND_API_KEY);
   const blockMessage = !apiKeyConfigured
     ? t("notifyNoKey")
@@ -311,12 +326,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     subscriberCount,
     quotaLine: t("notifyRemaining", { remaining: quota.remaining, total: quota.total }),
     apiKeyConfigured,
-    canSend: response !== null && blockMessage === "",
+    canSend: typeof response !== "string" && blockMessage === "",
     fromLabel: sender.from ?? "",
     blockMessage,
-    error: response
-      ? payload?.errors?.map((item) => item.message).join("; ") ?? null
-      : t("notifyProductAccessDenied"),
+    error: typeof response === "string"
+      ? t(response)
+      : payload?.errors?.map((item) => item.message).join("; ") ?? null,
     searchLabel: t("notifySearch"),
     searchButton: t("notifySearchButton"),
     pickLabel: t("notifyPick"),
@@ -403,8 +418,8 @@ export const action = async ({
         }
       }`,
     { variables: { ids } },
-  ).catch(handleProductAccessError);
-  if (!response) return rejected(t("notifyProductAccessDenied"), runId);
+  ).catch((error: unknown) => handleProductAccessError(error, session));
+  if (typeof response === "string") return rejected(t(response), runId);
   const payload = (await response.json()) as NotifyNodesQuery;
 
   if (payload.errors?.length) {
@@ -453,7 +468,7 @@ export const action = async ({
     });
   }
 
-  const subscribers = await db.subscriber.findMany({
+  const subscribers: { id: number; email: string }[] = await db.subscriber.findMany({
     where: { shop: session.shop, id: { gt: afterId } },
     select: { id: true, email: true },
     orderBy: { id: "asc" },
@@ -505,7 +520,7 @@ export const action = async ({
 
   let sent = 0;
   let failed = 0;
-  let message = "";
+  let message: string;
 
   try {
     const emails = await Promise.all(
@@ -633,7 +648,7 @@ export default function NotifyPage() {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const selected = data.products.find((product) => product.id === productId);
-  const variants = selected?.variants?.nodes ?? [];
+  const variants = selected?.variants?.nodes ?? EMPTY_VARIANTS;
   const selectedVariant = variants.find((variant) => variant.id === variantId);
   const submitting = running || fetcher.state !== "idle";
   const alreadyAdded = items.some(

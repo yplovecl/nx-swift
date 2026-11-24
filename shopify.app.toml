@@ -1,6 +1,6 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "d2a99231e208e14154fb6d409ad60ffb"
+client_id = "9083e6a6dbdb5c8abac66ec61c4d335f"
 name = "NX Swift"
 application_url = "https://swift.nxlab.app"
 embedded = true
