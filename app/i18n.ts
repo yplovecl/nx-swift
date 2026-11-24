@@ -7,16 +7,14 @@ const copy = {
     navSettings: "Sender",
     navNotify: "Send notification",
     homeTitle: "NX Swift",
-    homeCount: "This shop has {count} subscribers.",
-    homeSender: "Mail is sent as {from}.",
-    homeSenderNoFrom:
-      "{domain} is not ready to send. Verify its DNS and save a from address under Sender.",
+    homeSenderIntro:
+      "Emails are sent from {from} by default. To send from your own email address, complete DNS verification and save your sender address in Sender settings.",
     homeStepBlock:
-      "In the theme editor, add the NX Swift app block to a page.",
+      "Go to Online Store → Customize → App blocks and drag NX Swift onto the page.",
     homeStepSender:
-      "To use your own sending domain, add it, verify the DNS records, and save a from address.",
+      "Add your store's domain, verify its DNS records, and save a sender address on that domain.",
     homeStepNotify:
-      "Choose a product under Send notification to email your subscribers.",
+      "Choose a product in Send notification. Review the preview, then send the new product notification to your subscribers.",
     homeSettings: "Sender settings",
     homeSubscribers: "View subscribers",
     homeNotify: "Send notification",
@@ -192,12 +190,10 @@ const copy = {
     navSettings: "发件设置",
     navNotify: "发送通知",
     homeTitle: "玄鸟",
-    homeCount: "当前已有 {count} 位顾客订阅新品通知。",
-    homeSender: "邮件以 {from} 发出。",
-    homeSenderNoFrom: "{domain} 还不能发信。请在「发件设置」完成 DNS 验证并保存发件邮箱。",
+    homeSenderIntro: "默认使用 {from} 发送邮件。 如需使用自己的邮箱发送邮件，请在「发件设置」完成 DNS 验证并保存发件邮箱。",
     homeStepBlock: "在线商店 → 自定义 → 应用区块，把「玄鸟」拖到页面上。",
-    homeStepSender: "如需使用自定义发件地址，请添加域名，验证 DNS 记录并保存发件邮箱。",
-    homeStepNotify: "在「发送通知」选择商品，即可向订阅者发送邮件。",
+    homeStepSender: "添加本店域名，验证 DNS 记录，再保存同域名的发件邮箱。",
+    homeStepNotify: "在「发送通知」选择商品，预览无误后即可发送新品订阅通知。",
     homeSettings: "发件设置",
     homeSubscribers: "查看订阅者",
     homeNotify: "发送通知",

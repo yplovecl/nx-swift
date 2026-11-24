@@ -14,7 +14,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import db from "../db.server";
-import { notificationSender } from "../domain.server";
+import { DEFAULT_FROM_EMAIL } from "../domain";
 import { localeFromRequest, translate } from "../i18n";
 import {
   formatPackPrice,
@@ -46,9 +46,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       : null;
   const purchasedCredits = settled.credits;
 
-  const [count, sender, quota, packs] = await Promise.all([
+  const [count, quota, packs] = await Promise.all([
     db.subscriber.count({ where: { shop: session.shop } }),
-    notificationSender(session.shop),
     shopQuota(session.shop),
     listMailPacks(),
   ]);
@@ -57,10 +56,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     locale,
     title: t("homeTitle"),
     shop: session.shop,
-    summary: t("homeCount", { count }),
-    senderLine: sender.from === null
-      ? t("homeSenderNoFrom", { domain: sender.domain.name })
-      : t("homeSender", { from: sender.from }),
+    senderIntro: t("homeSenderIntro", { from: DEFAULT_FROM_EMAIL }),
     steps: [t("homeStepBlock"), t("homeStepSender"), t("homeStepNotify")],
     settingsLabel: t("homeSettings"),
     subscribersLabel: t("homeSubscribers"),
@@ -230,7 +226,7 @@ export default function Index() {
               {data.shop}
             </Text>
             <Text as="p" variant="bodyMd">
-              {data.summary} {data.senderLine}
+              {data.senderIntro}
             </Text>
             <List>
               {data.steps.map((step) => (
