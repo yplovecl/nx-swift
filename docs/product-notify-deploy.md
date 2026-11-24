@@ -105,7 +105,7 @@ RESEND_API_KEY=Resend 控制台创建的 API Key
 | `RESEND_API_KEY` | 发信时必填 | 未设置时后台可以打开，但「发送通知」会被拒绝 |
 | `SHOP_CUSTOM_DOMAIN` | 否 | 只有店铺使用自定义 myshopify 以外的域名参与 OAuth 时才需要 |
 
-请先在 `RESEND_API_KEY` 所属的 Resend 账号中验证 `nxlab.app` 的发件能力。店铺未绑定域名时，通知从 `noreply@nxlab.app` 发出。绑定域名后，店铺需验证该域名并保存该域名下的发件邮箱。
+请先在 `RESEND_API_KEY` 所属的 Resend 账号中验证 `nxlab.app` 的发件能力。店铺未绑定域名时，通知从 `nx-swift@nxlab.app` 发出。绑定域名后，店铺需验证该域名并保存该域名下的发件邮箱。
 
 ## 6. 建表、构建、启动
 
@@ -270,7 +270,7 @@ pnpm run deploy
 | 发件设置保存后刷新 | 首页显示刚才保存的发件人 |
 | 主题区块提交一个邮箱 | 订阅者列表出现该邮箱；重复提交得到「该邮箱已订阅」 |
 | 直接请求 `https://swift.nxlab.app/api/subscribe` 且不带 Shopify 签名 | 返回 401 |
-| 选择一个在售商品发送通知 | 未绑定域名时使用 `noreply@nxlab.app`，绑定后使用店铺已验证的发件地址 |
+| 选择一个在售商品发送通知 | 未绑定域名时使用 `nx-swift@nxlab.app`，绑定后使用店铺已验证的发件地址 |
 | MariaDB | 存在 `Session`、`Subscriber`、`ShopSender` |
 
 发送很多订阅者时，请求会按每人约 600ms 持续占用，反向代理的读超时要覆盖整次发送。页面要保持打开，当前没有后台队列。
