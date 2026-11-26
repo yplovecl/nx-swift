@@ -294,19 +294,16 @@ pnpm run deploy
 
 ## 11. 以后更新版本
 
-在服务器上：
+拉入新代码后，用管理 `nx-swift` 进程的部署用户运行：
 
 ```bash
 cd /www/code/shopify-product-notify
-# 拉入新代码后
-pnpm install --frozen-lockfile
-pnpm run setup:production
-pnpm run build
-pm2 restart ecosystem.config.cjs --only nx-swift --update-env
-pm2 save
+bash deploy.sh
 ```
 
-如果用 systemd 管理应用，构建后执行 `sudo systemctl restart product-notify`。
+脚本安装锁文件中的依赖、执行生产数据库迁移、构建并重启 PM2 进程。本机 HTTP 检查通过后保存 PM2 进程列表。首次启动请先按第 6 节构建并添加 PM2 进程。
+
+如果用 systemd 管理应用，按第 6 节安装依赖、迁移和构建，然后执行 `sudo systemctl restart product-notify`。
 
 如果这次改了 `shopify.app.toml`（地址、权限、Webhook、App Proxy 或主题扩展），还要在开发电脑上再执行一次 `pnpm run deploy`。只改了服务器上的业务代码时，不需要重新 deploy。
 
