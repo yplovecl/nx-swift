@@ -10,14 +10,12 @@ import {
   Card,
   InlineStack,
   Page,
-  Select,
   Text,
   TextField,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import {
   DEFAULT_FROM_EMAIL,
-  DOMAIN_REGIONS,
   type ShopDomainView,
   type StoredRecord,
 } from "../domain";
@@ -108,7 +106,7 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<SettingsR
   const intent = formData.get("intent");
 
   if (intent === "add") {
-    const result = await addShopDomain(session.shop, formData.get("domain"), formData.get("region"));
+    const result = await addShopDomain(session.shop, formData.get("domain"));
     if (!result.ok) {
       const fallback =
         result.error === "invalid"
@@ -216,7 +214,6 @@ export default function SettingsPage() {
   const t = translate(data.locale as Locale);
   const fetcher = useFetcher<typeof action>();
   const [domainName, setDomainName] = useState("");
-  const [region, setRegion] = useState<(typeof DOMAIN_REGIONS)[number]>("ap-northeast-1");
   const [fromName, setFromName] = useState(data.fromName);
   const [fromEmail, setFromEmail] = useState(data.fromEmail);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -338,15 +335,6 @@ export default function SettingsPage() {
                     onChange={setDomainName}
                     autoComplete="off"
                     placeholder={t("settingsDomainPlaceholder")}
-                    disabled={!data.resendConfigured || submitting}
-                  />
-                  <Select
-                    label={t("settingsRegion")}
-                    name="region"
-                    options={DOMAIN_REGIONS.map((item) => ({ label: item, value: item }))}
-                    value={region}
-                    onChange={(value) => setRegion(value as (typeof DOMAIN_REGIONS)[number])}
-                    helpText={t("settingsRegionHelp")}
                     disabled={!data.resendConfigured || submitting}
                   />
                   <InlineStack>

@@ -1,8 +1,7 @@
-import type { DomainRecords, DomainRegion } from "resend";
+import type { DomainRecords } from "resend";
 import {
   DEFAULT_FROM_EMAIL,
   DEFAULT_SENDING_DOMAIN,
-  DOMAIN_REGIONS,
   type ShopDomainView,
   type StoredRecord,
 } from "./domain";
@@ -25,12 +24,6 @@ export function normalizeDomain(value: unknown) {
     return null;
   }
   return domain;
-}
-
-export function readRegion(value: unknown): DomainRegion {
-  const region = typeof value === "string" ? value : "";
-  if ((DOMAIN_REGIONS as readonly string[]).includes(region)) return region as DomainRegion;
-  return "ap-northeast-1";
 }
 
 export function parseRecords(raw: string): StoredRecord[] {
@@ -126,7 +119,6 @@ export async function loadShopDomain(shop: string): Promise<{
 export async function addShopDomain(
   shop: string,
   rawName: unknown,
-  rawRegion: unknown,
 ): Promise<{ ok: true; domain: ShopDomainView } | DomainFailure> {
   const name = normalizeDomain(rawName);
   if (!name) return { ok: false, error: "invalid" };
@@ -143,7 +135,7 @@ export async function addShopDomain(
 
   const created = await resend.domains.create({
     name,
-    region: readRegion(rawRegion),
+    region: "ap-northeast-1",
     capabilities: { sending: "enabled", receiving: "disabled" },
   });
   if (created.error || !created.data) {
