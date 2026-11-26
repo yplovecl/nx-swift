@@ -114,7 +114,6 @@ RESEND_API_KEY=Resend 控制台创建的 API Key
 ```bash
 pnpm run setup:production
 pnpm run build
-pnpm start
 ```
 
 `setup:production` 等价于：
@@ -130,7 +129,25 @@ Prisma 一次只能生成一种数据库的客户端。线上如果误执行了�
 
 `pnpm run build` 生成 `build/server/index.js`。`pnpm start` 使用 `remix-serve` 启动这个文件。
 
-### 6.1 用 systemd 保持运行
+### 6.1 用 PM2 启动
+
+使用部署用户执行以下命令，确保该用户能读取项目根目录的 `.env`：
+
+```bash
+npm install --global pm2
+cd /www/code/shopify-product-notify
+pm2 start ecosystem.config.cjs --only nx-swift
+pm2 status nx-swift
+pm2 logs nx-swift --lines 100 --nostream
+```
+
+如果旧的 `product-notify` systemd 服务正在使用同一端口，先执行 `sudo systemctl stop product-notify`。确认 PM2 启动正常后，执行 `sudo systemctl disable product-notify`，避免开机时两个进程抢占端口。
+
+PM2 以生产模式启动单个 Remix 进程，读取根目录 `.env` 中的配置，并监听 `127.0.0.1`。保持 `.env` 中的 `PORT` 与 Nginx 反向代理端口一致，默认部署示例使用 `3000`。
+
+设置开机启动时，用同一个部署用户运行 `pm2 startup`，执行 PM2 输出的 `sudo` 命令，再用部署用户运行 `pm2 save`。
+
+### 6.2 用 systemd 启动
 
 `/etc/systemd/system/product-notify.service`：
 
@@ -264,7 +281,7 @@ pnpm run deploy
 
 | 检查 | 预期 |
 | --- | --- |
-| `systemctl status product-notify` | 进程为 active |
+| `pm2 status nx-swift` | 进程为 online。使用 systemd 时，`systemctl status product-notify` 应显示 active |
 | 打开 `https://swift.nxlab.app` | 有 HTTP 响应，证书有效 |
 | 后台打开应用 | 能看到「玄鸟」首页，而不是空白或隧道错误 |
 | 发件设置保存后刷新 | 首页显示刚才保存的发件人 |
@@ -285,8 +302,11 @@ cd /www/code/shopify-product-notify
 pnpm install --frozen-lockfile
 pnpm run setup:production
 pnpm run build
-sudo systemctl restart product-notify
+pm2 restart ecosystem.config.cjs --only nx-swift --update-env
+pm2 save
 ```
+
+如果用 systemd 管理应用，构建后执行 `sudo systemctl restart product-notify`。
 
 如果这次改了 `shopify.app.toml`（地址、权限、Webhook、App Proxy 或主题扩展），还要在开发电脑上再执行一次 `pnpm run deploy`。只改了服务器上的业务代码时，不需要重新 deploy。
 
