@@ -41,6 +41,13 @@ model Subscriber {
   @@unique([shop, email])
 }
 
+model ShopEmailTemplate {
+  shop        String @id
+  subject     String @db.VarChar(150)
+  buttonLabel String @db.VarChar(60)
+  buttonUrl   String @db.VarChar(2048)
+}
+
 model ShopSender {
   shop      String   @id
   fromName  String   @default("")

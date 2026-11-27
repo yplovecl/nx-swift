@@ -18,6 +18,13 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { NewProductNotification } from "../emails/NewProductNotification";
 import db from "../db.server";
 import { notificationSender } from "../domain.server";
+import {
+  makeNotificationProducts,
+  NOTIFY_PRODUCTS_QUERY,
+  type NotifyNodesQuery,
+  type RequestedItem,
+} from "../email-products.server";
+import { normalizeWebUrl } from "../email-template";
 import { localeFromRequest, translate } from "../i18n";
 import { recordDeliveries, releaseMails, reserveMails, shopQuota } from "../quota.server";
 import { getResend } from "../resend.server";
@@ -53,45 +60,6 @@ type ProductsQuery = {
     products?: { nodes: ProductNode[] };
   };
   errors?: { message: string }[];
-};
-
-type ProductFields = {
-  id: string;
-  title: string;
-  handle: string;
-  onlineStoreUrl: string | null;
-  featuredImage: { url: string } | null;
-};
-
-type NotifyNode =
-  | ({ __typename: "Product" } & ProductFields)
-  | {
-      __typename: "ProductVariant";
-      id: string;
-      title: string;
-      image: { url: string } | null;
-      product: ProductFields;
-    }
-  | { __typename: string }
-  | null;
-
-type NotifyNodesQuery = {
-  data?: {
-    shop?: { name: string };
-    nodes?: NotifyNode[];
-  };
-  errors?: { message: string }[];
-};
-
-type RequestedItem = {
-  productId: string;
-  variantId: string;
-};
-
-type MailProduct = {
-  title: string;
-  imageUrl?: string;
-  url: string;
 };
 
 type NotifyResult = {
@@ -165,21 +133,6 @@ function rejected(message: string, runId = ""): NotifyResult {
   };
 }
 
-function productUrlFor(
-  shop: string,
-  product: { handle: string; onlineStoreUrl: string | null },
-) {
-  const candidate =
-    product.onlineStoreUrl || `https://${shop}/products/${product.handle}`;
-  try {
-    const url = new URL(candidate);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
 function itemKey(item: { productId: string; variantId: string }) {
   return `${item.productId}\n${item.variantId}`;
 }
@@ -238,18 +191,6 @@ function readItems(
     items.push({ productId, variantId });
   }
   return { items };
-}
-
-function variantUrlFor(productUrl: string, variantId: string) {
-  const numericId = variantId.split("/").pop() ?? "";
-  if (!/^\d+$/.test(numericId)) return null;
-  try {
-    const url = new URL(productUrl);
-    url.searchParams.set("variant", numericId);
-    return url.toString();
-  } catch {
-    return null;
-  }
 }
 
 function productQuery(raw: string | null) {
@@ -349,7 +290,6 @@ export const action = async ({
   const { admin, session } = await authenticate.admin(request);
   const locale = await localeFromRequest(request);
   const t = translate(locale);
-  const emailCopy = translate("en");
   const formData = await request.formData();
   const afterRaw = Number(formData.get("afterId") || 0);
   const afterId = Number.isFinite(afterRaw) && afterRaw > 0 ? afterRaw : 0;
@@ -383,40 +323,7 @@ export const action = async ({
     ),
   ];
   const response = await admin.graphql(
-    `#graphql
-      query NotifyProducts($ids: [ID!]!) {
-        shop {
-          name
-        }
-        nodes(ids: $ids) {
-          __typename
-          ... on Product {
-            id
-            title
-            handle
-            onlineStoreUrl
-            featuredImage {
-              url
-            }
-          }
-          ... on ProductVariant {
-            id
-            title
-            image {
-              url
-            }
-            product {
-              id
-              title
-              handle
-              onlineStoreUrl
-              featuredImage {
-                url
-              }
-            }
-          }
-        }
-      }`,
+    NOTIFY_PRODUCTS_QUERY,
     { variables: { ids } },
   ).catch((error: unknown) => handleProductAccessError(error, session));
   if (typeof response === "string") return rejected(t(response), runId);
@@ -426,47 +333,8 @@ export const action = async ({
     return rejected(payload.errors.map((item) => item.message).join("; "), runId);
   }
 
-  const productsById = new Map<string, ProductFields>();
-  const variantsById = new Map<
-    string,
-    { id: string; title: string; image: { url: string } | null; product: ProductFields }
-  >();
-  for (const node of payload.data?.nodes ?? []) {
-    if (!node || !("__typename" in node)) continue;
-    if (node.__typename === "Product" && "handle" in node) {
-      productsById.set(node.id, node);
-    } else if (node.__typename === "ProductVariant" && "product" in node) {
-      variantsById.set(node.id, node);
-    }
-  }
-
-  const mailProducts: MailProduct[] = [];
-  for (const item of requested.items) {
-    const product = productsById.get(item.productId);
-    if (!product) return rejected(t("notifyMissingProduct"), runId);
-    const productUrl = productUrlFor(session.shop, product);
-    if (!productUrl) return rejected(t("notifyBadUrl"), runId);
-
-    let title = product.title;
-    let url = productUrl;
-    let imageUrl = product.featuredImage?.url;
-    if (item.variantId) {
-      const variant = variantsById.get(item.variantId);
-      if (!variant || variant.product.id !== item.productId) {
-        return rejected(t("notifyMissingVariant"), runId);
-      }
-      const variantUrl = variantUrlFor(productUrl, variant.id);
-      if (!variantUrl) return rejected(t("notifyBadUrl"), runId);
-      title = `${product.title} - ${variant.title}`;
-      url = variantUrl;
-      imageUrl = variant.image?.url || imageUrl;
-    }
-    mailProducts.push({
-      title,
-      url,
-      imageUrl: imageUrl && imageUrl.startsWith("https://") ? imageUrl : undefined,
-    });
-  }
+  const selection = makeNotificationProducts(payload.data?.nodes ?? [], requested.items, session.shop, locale);
+  if ("error" in selection) return rejected(t(selection.error), runId);
 
   const subscribers: { id: number; email: string }[] = await db.subscriber.findMany({
     where: { shop: session.shop, id: { gt: afterId } },
@@ -490,6 +358,29 @@ export const action = async ({
         };
   }
 
+  const template = await db.shopEmailTemplate.findUnique({ where: { shop: session.shop } });
+  const shopName = payload.data?.shop?.name || session.shop;
+  const storefrontUrl = normalizeWebUrl(payload.data?.shop?.primaryDomain?.url ?? "") ?? `https://${session.shop}`;
+  const appUrl = normalizeWebUrl(process.env.SHOPIFY_APP_URL ?? "");
+  const subject = template?.subject || (selection.products.length === 1
+    ? t("emailSubject", { title: selection.products[0]!.title })
+    : t("emailSubjectMany", { shop: shopName }));
+  const emailProps = {
+    lang: locale === "zh" ? "zh-CN" : "en",
+    shopName,
+    // PNG of the Shopify Polaris NotificationIcon for email clients without SVG support.
+    brandIconUrl: appUrl ? new URL("/email-notification.png", appUrl).toString() : undefined,
+    newArrivals: t("emailNewArrivals"),
+    greeting: t("emailGreeting"),
+    heading: template?.subject || t("emailHeading"),
+    intro: t("emailIntro"),
+    products: selection.products,
+    buttonLabel: template?.buttonLabel || t("emailBrowseAll"),
+    buttonUrl: normalizeWebUrl(template?.buttonUrl ?? "") ?? new URL("/collections/all", storefrontUrl).toString(),
+    footer: t("emailFooter", { shop: shopName }),
+    unsubscribeLabel: t("emailUnsubscribe"),
+  };
+
   const reserved = await reserveMails(session.shop, subscribers.length);
   if (reserved <= 0) {
     return {
@@ -506,18 +397,6 @@ export const action = async ({
   const batch = subscribers.slice(0, reserved);
   const limited = reserved < subscribers.length;
 
-  const shopName = payload.data?.shop?.name || session.shop;
-  const subject =
-    mailProducts.length === 1
-      ? emailCopy("emailSubject", { title: mailProducts[0]!.title })
-      : emailCopy("emailSubjectMany", { shop: shopName });
-  const intro =
-    mailProducts.length === 1
-      ? emailCopy("emailHello", { shop: shopName })
-      : emailCopy("emailHelloMany", { shop: shopName });
-  const buttonLabel = emailCopy("emailButton");
-  const unsubscribeLabel = emailCopy("emailUnsubscribe");
-
   let sent = 0;
   let failed = 0;
   let message: string;
@@ -530,11 +409,8 @@ export const action = async ({
         subject,
         html: await render(
           <NewProductNotification
-            products={mailProducts}
-            intro={intro}
-            buttonLabel={buttonLabel}
-            unsubscribeUrl={unsubscribeUrl(session.shop, subscriber.email, "en")}
-            unsubscribeLabel={unsubscribeLabel}
+            {...emailProps}
+            unsubscribeUrl={unsubscribeUrl(session.shop, subscriber.email, locale)}
           />,
         ),
       })),

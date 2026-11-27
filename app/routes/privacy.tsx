@@ -14,6 +14,7 @@ const storedKeys = [
   "privacyDataShop",
   "privacyDataEmail",
   "privacyDataSender",
+  "privacyDataTemplate",
   "privacyDataRequest",
   "privacyDataDelivery",
 ] as const satisfies readonly CopyKey[];

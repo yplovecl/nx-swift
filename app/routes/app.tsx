@@ -47,6 +47,7 @@ export default function App() {
         </Link>
         <Link to={`/app/subscribers${search}`}>{t("navSubscribers")}</Link>
         <Link to={`/app/settings${search}`}>{t("navSettings")}</Link>
+        <Link to={`/app/email-template${search}`}>{t("templateTitle")}</Link>
         <Link to={`/app/notify${search}`}>{t("navNotify")}</Link>
       </NavMenu>
       <Outlet />

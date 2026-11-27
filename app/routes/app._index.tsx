@@ -59,6 +59,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     senderIntro: t("homeSenderIntro", { from: DEFAULT_FROM_EMAIL }),
     steps: [t("homeStepBlock"), t("homeStepSender"), t("homeStepNotify")],
     settingsLabel: t("homeSettings"),
+    templateLabel: t("templateTitle"),
     subscribersLabel: t("homeSubscribers"),
     notifyLabel: t("homeNotify"),
     privacyLabel: t("homePrivacy"),
@@ -142,6 +143,7 @@ export default function Index() {
   const opened = useRef("");
   const pages = [
     { path: "/app/settings", label: data.settingsLabel, primary: true },
+    { path: "/app/email-template", label: data.templateLabel, primary: false },
     { path: "/app/subscribers", label: data.subscribersLabel, primary: false },
     { path: "/app/notify", label: data.notifyLabel, primary: false },
     { path: "/privacy", label: data.privacyLabel, primary: false },
